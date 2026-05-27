@@ -1,7 +1,9 @@
 from backend.core.constants import (
     NEW_REGIME_SLABS, OLD_REGIME_SLABS,
-    REBATE_87A_INCOME_LIMIT, REBATE_87A_MAX_AMOUNT, CESS_RATE,
-    IT_ACT_DEP_RATES
+    REBATE_87A_INCOME_LIMIT, REBATE_87A_MAX_AMOUNT,
+    REBATE_87A_OLD_INCOME_LIMIT, REBATE_87A_OLD_MAX_AMOUNT,
+    SURCHARGE_BRACKETS_NEW, SURCHARGE_BRACKETS_OLD,
+    CESS_RATE, IT_ACT_DEP_RATES,
 )
 
 
@@ -21,14 +23,22 @@ def compute_tax_liability(taxable_income: float, regime: str = "new") -> dict:
             "amount": round(amount_in_slab), "tax": round(tax_in_slab)
         })
 
-    rebate = min(slab_tax, REBATE_87A_MAX_AMOUNT) \
-        if taxable_income <= REBATE_87A_INCOME_LIMIT else 0.0
+    # Rebate 87A — regime-specific limits (FY 2024-25)
+    if regime == "new":
+        rebate = min(slab_tax, REBATE_87A_MAX_AMOUNT) \
+            if taxable_income <= REBATE_87A_INCOME_LIMIT else 0.0
+    else:
+        rebate = min(slab_tax, REBATE_87A_OLD_MAX_AMOUNT) \
+            if taxable_income <= REBATE_87A_OLD_INCOME_LIMIT else 0.0
     tax_after_rebate = max(0, slab_tax - rebate)
 
+    # Surcharge — full brackets, regime-dependent (FY 2024-25)
     surcharge = 0.0
-    if taxable_income > 5_000_000:
-        rate = 0.10 if taxable_income <= 10_000_000 else 0.15
-        surcharge = tax_after_rebate * rate
+    brackets = SURCHARGE_BRACKETS_NEW if regime == "new" else SURCHARGE_BRACKETS_OLD
+    for lower_threshold, upper_threshold, surcharge_rate in brackets:
+        if taxable_income > lower_threshold:
+            surcharge = tax_after_rebate * surcharge_rate
+            break
 
     cess = (tax_after_rebate + surcharge) * CESS_RATE
     net_tax = round(tax_after_rebate + surcharge + cess)

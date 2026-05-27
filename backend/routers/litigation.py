@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -61,7 +61,7 @@ async def draft_all(case_id: int, db: AsyncSession = Depends(get_db)):
     case.draft_grounds_of_appeal = drafts.get("grounds_of_appeal")
     case.draft_written_submissions = drafts.get("written_submissions")
     case.draft_version += 1
-    case.last_drafted_at = datetime.utcnow()
+    case.last_drafted_at = datetime.now(timezone.utc)
 
     # Save to history
     for section, content in drafts.items():
@@ -98,8 +98,9 @@ async def draft_section(case_id: int, section: str, db: AsyncSession = Depends(g
     content = await ollama_service.draft_litigation_section(section, case_data)
 
     setattr(case, f"draft_{section}", content)
-    case.draft_version += 1
-    case.last_drafted_at = datetime.utcnow()
+    # Do not bump draft_version for single-section re-drafts; only draft_all
+    # increments the version so the counter reflects complete drafts.
+    case.last_drafted_at = datetime.now(timezone.utc)
 
     hist = LitigationDraftHistory(
         case_id=case_id,

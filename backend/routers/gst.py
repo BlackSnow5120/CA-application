@@ -1,3 +1,4 @@
+import re
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -9,9 +10,22 @@ from backend.services.gst_service import reconcile_2b, compute_3b
 
 router = APIRouter(prefix="/api/gst", tags=["gst"])
 
+_GST_PERIOD_RE = re.compile(
+    r'^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-\d{4}$'
+)
+
+
+def _validate_period(period: str) -> None:
+    if not _GST_PERIOD_RE.match(period):
+        raise HTTPException(
+            status_code=422,
+            detail="Period must be in format 'Mon-YYYY' e.g. 'Oct-2024'",
+        )
+
 
 @router.get("/{client_id}/{period}", response_model=GSTPeriodOut)
 async def get_period(client_id: int, period: str, db: AsyncSession = Depends(get_db)):
+    _validate_period(period)
     result = await db.execute(
         select(GSTPeriod)
         .where(GSTPeriod.client_id == client_id, GSTPeriod.period == period)
@@ -61,6 +75,7 @@ async def reconcile(req: ReconRequest, db: AsyncSession = Depends(get_db)):
 
 @router.get("/{client_id}/{period}/3b")
 async def get_3b(client_id: int, period: str, db: AsyncSession = Depends(get_db)):
+    _validate_period(period)
     """Compute GSTR-3B figures from stored invoices."""
     p_result = await db.execute(
         select(GSTPeriod)

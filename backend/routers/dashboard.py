@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -37,12 +37,14 @@ async def dashboard_summary(db: AsyncSession = Depends(get_db)):
             "status": status,
         })
 
-    # TDS quarterly deadlines
+    # TDS quarterly deadlines — Q1/Q2 are in current FY start year; Q3/Q4 spill into next calendar year
+    # FY runs Apr–Mar, so Q3 due Jan and Q4 due May belong to the year AFTER FY start
+    fy_start_year = current_year if current_month >= 4 else current_year - 1
     tds_quarters = [
-        ("Q1", date(current_year, 7, 31)),
-        ("Q2", date(current_year, 10, 31)),
-        ("Q3", date(current_year, 1, 31)),
-        ("Q4", date(current_year, 5, 31)),
+        ("Q1", date(fy_start_year, 7, 31)),
+        ("Q2", date(fy_start_year, 10, 31)),
+        ("Q3", date(fy_start_year + 1, 1, 31)),
+        ("Q4", date(fy_start_year + 1, 5, 31)),
     ]
     for q, ddate in tds_quarters:
         days_left = (ddate - today).days
@@ -54,30 +56,54 @@ async def dashboard_summary(db: AsyncSession = Depends(get_db)):
             "status": status,
         })
 
-    # Client summary
+    # --- Bulk queries to avoid N+1 per client ---
     clients_result = await db.execute(select(Client))
     clients = clients_result.scalars().all()
+    client_ids = [c.id for c in clients]
+
+    if client_ids:
+        # Latest TDS return per client (bulk fetch, pick first per client_id)
+        tds_all_result = await db.execute(
+            select(TDSReturn)
+            .where(TDSReturn.client_id.in_(client_ids))
+            .order_by(TDSReturn.client_id, TDSReturn.created_at.desc())
+        )
+        latest_tds_map: dict[int, TDSReturn] = {}
+        for t in tds_all_result.scalars().all():
+            if t.client_id not in latest_tds_map:
+                latest_tds_map[t.client_id] = t
+
+        # GST periods for current month (one query)
+        period_str = today.strftime("%b-%Y")
+        gst_all_result = await db.execute(
+            select(GSTPeriod).where(
+                GSTPeriod.client_id.in_(client_ids),
+                GSTPeriod.period == period_str,
+            )
+        )
+        gst_period_map: dict[int, GSTPeriod] = {
+            p.client_id: p for p in gst_all_result.scalars().all()
+        }
+
+        # Latest ITR per client (bulk fetch, pick first per client_id)
+        itr_all_result = await db.execute(
+            select(ITRReturn)
+            .where(ITRReturn.client_id.in_(client_ids))
+            .order_by(ITRReturn.client_id, ITRReturn.created_at.desc())
+        )
+        latest_itr_map: dict[int, ITRReturn] = {}
+        for itr in itr_all_result.scalars().all():
+            if itr.client_id not in latest_itr_map:
+                latest_itr_map[itr.client_id] = itr
+    else:
+        latest_tds_map, gst_period_map, latest_itr_map = {}, {}, {}
+        period_str = today.strftime("%b-%Y")
 
     client_summaries = []
     for c in clients:
-        # TDS this quarter
-        tds_result = await db.execute(
-            select(TDSReturn).where(TDSReturn.client_id == c.id).order_by(TDSReturn.created_at.desc()).limit(1)
-        )
-        latest_tds = tds_result.scalar_one_or_none()
-
-        # GST this month
-        period_str = today.strftime("%b-%Y")
-        gst_result = await db.execute(
-            select(GSTPeriod).where(GSTPeriod.client_id == c.id, GSTPeriod.period == period_str)
-        )
-        gst_period = gst_result.scalar_one_or_none()
-
-        # ITR
-        itr_result = await db.execute(
-            select(ITRReturn).where(ITRReturn.client_id == c.id).order_by(ITRReturn.created_at.desc()).limit(1)
-        )
-        latest_itr = itr_result.scalar_one_or_none()
+        latest_tds = latest_tds_map.get(c.id)
+        gst_period = gst_period_map.get(c.id)
+        latest_itr = latest_itr_map.get(c.id)
 
         client_summaries.append({
             "id": c.id,
@@ -106,5 +132,5 @@ async def dashboard_summary(db: AsyncSession = Depends(get_db)):
         "deadlines": deadlines,
         "clients": client_summaries,
         "total_clients": len(clients),
-        "generated_at": datetime.utcnow().isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
     }

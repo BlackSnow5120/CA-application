@@ -13,6 +13,18 @@ function statusBadge(status: string) {
   return map[status] || 'badge-gray';
 }
 
+function DeadlineCard({ d }: { d: { type: string; deadline_date: string; days_left: number; status: string } }) {
+  return (
+    <div className={`deadline-card ${d.status}`}>
+      <div className="deadline-type">{d.type}</div>
+      <div className="deadline-date">{formatDate(d.deadline_date)}</div>
+      <div className={`deadline-days ${d.status}`}>
+        {d.days_left < 0 ? `${Math.abs(d.days_left)}d overdue` : `${d.days_left}d left`}
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [data, setData] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -104,24 +116,8 @@ export default function Dashboard() {
           <div className="section-title">Filing Deadlines — Current Month</div>
         </div>
         <div className="grid grid-4 mb-6">
-          {gstDeadlines.map(d => (
-            <div key={d.type} className={`deadline-card ${d.status}`}>
-              <div className="deadline-type">{d.type}</div>
-              <div className="deadline-date">{formatDate(d.deadline_date)}</div>
-              <div className={`deadline-days ${d.status}`}>
-                {d.days_left < 0 ? `${Math.abs(d.days_left)}d overdue` : `${d.days_left}d left`}
-              </div>
-            </div>
-          ))}
-          {tdsDeadlines.slice(0, 2).map(d => (
-            <div key={d.type} className={`deadline-card ${d.status}`}>
-              <div className="deadline-type">{d.type}</div>
-              <div className="deadline-date">{formatDate(d.deadline_date)}</div>
-              <div className={`deadline-days ${d.status}`}>
-                {d.days_left < 0 ? `${Math.abs(d.days_left)}d overdue` : `${d.days_left}d left`}
-              </div>
-            </div>
-          ))}
+          {gstDeadlines.map(d => <DeadlineCard key={d.type} d={d} />)}
+          {tdsDeadlines.slice(0, 2).map(d => <DeadlineCard key={d.type} d={d} />)}
         </div>
 
         {/* Client table */}

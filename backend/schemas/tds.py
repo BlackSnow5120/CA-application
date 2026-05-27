@@ -57,3 +57,19 @@ class TDSValidationError(BaseModel):
     field: str
     value: str
     issue: str
+
+
+class TDSValidateRequest(BaseModel):
+    rows: list[dict]
+
+
+class TDSGenerateMeta(BaseModel):
+    client_id: int | None = None
+    form_type: str = "26Q"
+    quarter: str = "Q1-2024-25"
+    financial_year: str = "2024-25"
+
+
+class TDSGenerateRequest(BaseModel):
+    rows: list[dict]
+    meta: TDSGenerateMeta = TDSGenerateMeta()

@@ -21,6 +21,8 @@ export default function ITRWizard() {
   const [aiNotes, setAiNotes] = useState<string | null>(null);
   const [gstCheck, setGstCheck] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   const stdDed = 75000;
   const salaryNet = Math.max(0, salary.gross_salary - stdDed);
@@ -40,6 +42,7 @@ export default function ITRWizard() {
 
   const handleSaveAndCompute = async () => {
     setLoading(true);
+    setSaveError(null);
     try {
       const saveRes = await saveITR({
         client_id: clientId,
@@ -60,24 +63,36 @@ export default function ITRWizard() {
       setItrId(id);
       const taxRes = await computeTax(id, { taxable_income: taxableIncome, regime });
       setTaxResult(taxRes.data);
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
+    } catch (e: any) {
+      const detail = e?.response?.data?.detail;
+      setSaveError(typeof detail === 'string' ? detail : 'Failed to save ITR. Check that the client ID exists and this FY has not already been filed.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleGSTCrosscheck = async () => {
     if (!itrId) return;
-    const res = await gstCrosscheck(itrId);
-    setGstCheck(res.data);
+    try {
+      const res = await gstCrosscheck(itrId);
+      setGstCheck(res.data);
+    } catch {
+      // Non-critical — silently ignore if GST data unavailable
+    }
   };
 
   const handleAIReview = async () => {
     if (!itrId) return;
     setLoading(true);
+    setAiError(null);
     try {
       const res = await aiReviewITR(itrId);
       setAiNotes(res.data.review_notes);
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
+    } catch {
+      setAiError('AI review failed. Is Ollama running at localhost:11434?');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -184,7 +199,7 @@ export default function ITRWizard() {
                 <div className="section-title mb-4">Capital Gains</div>
                 {[
                   { key: 'equity_ltcg', label: 'Equity LTCG (>₹1.25L exempt, 12.5%)' },
-                  { key: 'equity_stcg', label: 'Equity STCG (15%)' },
+                  { key: 'equity_stcg', label: 'Equity STCG (20% — Budget 2024)' },
                   { key: 'property_ltcg', label: 'Property LTCG (20%)' },
                 ].map(({ key, label }) => (
                   <div key={key} className="form-group">
@@ -284,6 +299,11 @@ export default function ITRWizard() {
                     GST Turnover Mismatch! ITR: {formatINR(gstCheck.itr_turnover)} vs GST: {formatINR(gstCheck.gst_turnover)} (diff: {formatINR(gstCheck.diff)})
                   </div>
                 )}
+                {saveError && (
+                  <div className="alert alert-warning mt-3">
+                    <AlertCircle size={14} /> {saveError}
+                  </div>
+                )}
                 <div className="flex gap-2 mt-4">
                   <button className="btn btn-primary" onClick={handleSaveAndCompute} disabled={loading}>
                     {loading ? <span className="spinner" /> : null} Compute Tax
@@ -304,6 +324,11 @@ export default function ITRWizard() {
                   {loading ? <span className="spinner" /> : <Wand2 size={14} />}
                   Run AI Review (Local Ollama)
                 </button>
+                {aiError && (
+                  <div className="alert alert-warning mt-3">
+                    <AlertCircle size={14} /> {aiError}
+                  </div>
+                )}
                 {aiNotes && (
                   <div style={{
                     marginTop: 20, padding: 20, background: 'var(--bg-secondary)',

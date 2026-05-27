@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getLitigationCases, createLitigationCase, updateLitigationCase, draftAllSections, draftSection } from '../../lib/api';
+import { getLitigationCases, createLitigationCase, draftAllSections, draftSection } from '../../lib/api';
 import { formatDate } from '../../lib/formatters';
 import type { LitigationCase, CaseLaw } from '../../types';
 import { Plus, Wand2, Clock, AlertTriangle, History } from 'lucide-react';
@@ -17,6 +17,7 @@ export default function CaseList() {
   const [draftTab, setDraftTab] = useState<typeof SECTION_KEYS[number]>('statement_of_facts');
   const [loading, setLoading] = useState(false);
   const [draftLoading, setDraftLoading] = useState<string | null>(null);
+  const [draftError, setDraftError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [newCase, setNewCase] = useState({
     client_id: 1, case_title: '', case_type: 'appeal', authority: 'CIT(A)',
@@ -33,27 +34,35 @@ export default function CaseList() {
   const handleDraftAll = async () => {
     if (!selected) return;
     setLoading(true);
+    setDraftError(null);
     try {
       await draftAllSections(selected.id);
-      load();
-      const updated = await import('../../lib/api').then(m => m.getLitigationCases());
+      const updated = await getLitigationCases();
       const updatedCase = updated.data.find((c: LitigationCase) => c.id === selected.id);
       if (updatedCase) setSelected(updatedCase);
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
+      load();
+    } catch {
+      setDraftError('Drafting failed. Is Ollama running at localhost:11434?');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDraftOne = async (section: string) => {
     if (!selected) return;
     setDraftLoading(section);
+    setDraftError(null);
     try {
       await draftSection(selected.id, section);
-      load();
-      const updated = await import('../../lib/api').then(m => m.getLitigationCases());
+      const updated = await getLitigationCases();
       const updatedCase = updated.data.find((c: LitigationCase) => c.id === selected.id);
       if (updatedCase) setSelected(updatedCase);
-    } catch (e) { console.error(e); }
-    finally { setDraftLoading(null); }
+      load();
+    } catch {
+      setDraftError(`Failed to draft "${section}". Is Ollama running?`);
+    } finally {
+      setDraftLoading(null);
+    }
   };
 
   const handleCreate = async () => {
@@ -65,8 +74,11 @@ export default function CaseList() {
       });
       setShowNew(false);
       load();
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
+    } catch {
+      // Keep modal open so user doesn't lose their input
+    } finally {
+      setLoading(false);
+    }
   };
 
   const addCaseLaw = () => {
@@ -162,6 +174,11 @@ export default function CaseList() {
                 <AlertTriangle size={14} />
                 AI draft — verify all case laws independently before submission.
               </div>
+              {draftError && (
+                <div className="alert alert-warning mb-4">
+                  <AlertTriangle size={14} /> {draftError}
+                </div>
+              )}
 
               {/* Draft tabs */}
               <div className="tabs">

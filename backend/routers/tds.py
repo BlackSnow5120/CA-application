@@ -5,7 +5,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from backend.database import get_db
 from backend.models.tds import TDSReturn, TDSDeductee
-from backend.schemas.tds import TDSReturnCreate, TDSReturnOut, TDSSectionSuggestRequest, TDSValidationError
+from backend.schemas.tds import (
+    TDSReturnCreate, TDSReturnOut, TDSSectionSuggestRequest,
+    TDSValidationError, TDSValidateRequest, TDSGenerateRequest,
+)
 from backend.services import excel_parser, ollama_service
 from backend.core.validators import validate_tds_deductee
 from backend.core.constants import TDS_SECTIONS
@@ -41,9 +44,9 @@ async def upload_excel(file: UploadFile = File(...)):
 
 
 @router.post("/validate")
-async def validate_tds(payload: dict):
+async def validate_tds(payload: TDSValidateRequest):
     """Validate mapped TDS rows. Returns list of errors."""
-    rows = payload.get("rows", [])
+    rows = payload.rows
     errors = []
     for idx, row in enumerate(rows):
         row_errors = validate_tds_deductee(row)
@@ -58,15 +61,27 @@ async def validate_tds(payload: dict):
 
 
 @router.post("/generate-json")
-async def generate_json(payload: dict):
+async def generate_json(payload: TDSGenerateRequest):
     """Generate NSDL-compatible JSON for TDS return filing."""
-    rows = payload.get("rows", [])
-    meta = payload.get("meta", {})
+    rows = payload.rows
+    # Re-validate before generating — cannot skip the validate step
+    all_errors = []
+    for idx, row in enumerate(rows):
+        for err in validate_tds_deductee(row):
+            all_errors.append({"row": idx + 1, "issue": err})
+    if all_errors:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=422,
+            detail={"message": "Validation failed — fix errors before generating JSON", "errors": all_errors},
+        )
+
+    meta = payload.meta
     total_tds = sum(float(r.get("tds_amount", 0)) for r in rows)
     output = {
-        "form_type": meta.get("form_type", "26Q"),
-        "quarter": meta.get("quarter", "Q1-2024-25"),
-        "financial_year": meta.get("financial_year", "2024-25"),
+        "form_type": meta.form_type,
+        "quarter": meta.quarter,
+        "financial_year": meta.financial_year,
         "deductee_count": len(rows),
         "total_tds_amount": round(total_tds, 2),
         "deductees": rows,

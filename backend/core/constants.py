@@ -40,9 +40,29 @@ OLD_REGIME_SLABS = [
     (500_000, 1_000_000, 20),
     (1_000_000,    None, 30),
 ]
+# New Regime rebate 87A (FY 2024-25)
 REBATE_87A_INCOME_LIMIT = 700_000
 REBATE_87A_MAX_AMOUNT   = 25_000
+# Old Regime rebate 87A
+REBATE_87A_OLD_INCOME_LIMIT = 500_000
+REBATE_87A_OLD_MAX_AMOUNT   = 12_500
 CESS_RATE               = 0.04
+
+# Surcharge brackets (income thresholds in ₹)
+# New Regime: capped at 25% (no 37% bracket)
+SURCHARGE_BRACKETS_NEW = [
+    (50_000_000, None,       0.25),   # > ₹5Cr
+    (20_000_000, 50_000_000, 0.25),   # > ₹2Cr to ₹5Cr
+    (10_000_000, 20_000_000, 0.15),   # > ₹1Cr to ₹2Cr
+    (5_000_000,  10_000_000, 0.10),   # > ₹50L to ₹1Cr
+]
+# Old Regime: 37% bracket applies above ₹5Cr
+SURCHARGE_BRACKETS_OLD = [
+    (50_000_000, None,       0.37),   # > ₹5Cr
+    (20_000_000, 50_000_000, 0.25),   # > ₹2Cr to ₹5Cr
+    (10_000_000, 20_000_000, 0.15),   # > ₹1Cr to ₹2Cr
+    (5_000_000,  10_000_000, 0.10),   # > ₹50L to ₹1Cr
+]
 
 # Standard deductions
 STANDARD_DEDUCTION_SALARY          = 75_000
@@ -56,9 +76,11 @@ PRESUMPTIVE = {
     "44ADA": {"rate": 50, "digital_rate": 50, "receipts_limit":  7_500_000},
 }
 
-# Capital Gains FY 2024-25
+# Capital Gains FY 2024-25 (Budget 2024, effective 23 Jul 2024)
+# STCG on equity/equity MFs (Sec 111A): 20% (raised from 15%)
+# LTCG on equity/equity MFs (Sec 112A): 12.5% (raised from 10%), exempt up to ₹1.25L
 CAPITAL_GAINS_RATES = {
-    "equity_stcg":        15,
+    "equity_stcg":        20,
     "equity_ltcg":        12.5,
     "equity_ltcg_exempt": 125_000,
     "property_ltcg":      20,

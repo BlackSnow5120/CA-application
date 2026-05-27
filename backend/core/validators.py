@@ -16,6 +16,8 @@ def validate_tds_section(section: str) -> bool:
 
 def validate_tds_deductee(row: dict) -> list[str]:
     errors = []
+    if not row.get("deductee_name", "").strip():
+        errors.append("deductee_name: Deductee name is required")
     if not validate_pan(row.get("deductee_pan", "")):
         errors.append(f"Invalid PAN: {row.get('deductee_pan')}")
     if not validate_tds_section(row.get("section_code", "")):
